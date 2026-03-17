@@ -1,0 +1,48 @@
+name: Custom Armbian Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      board:
+        description: 'Board name'
+        required: true
+        default: 'x96q'
+      branch:
+        description: 'Branch'
+        required: true
+        default: 'current'
+      release:
+        description: 'Release'
+        required: true
+        default: 'trixie'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build Armbian
+        run: |
+          sudo ./compile.sh build \
+            BOARD=${{ github.event.inputs.board }} \
+            BRANCH=${{ github.event.inputs.branch }} \
+            RELEASE=${{ github.event.inputs.release }} \
+            BUILD_DESKTOP=yes \
+            BUILD_MINIMAL=no \
+            DESKTOP_APPGROUPS_SELECTED= \
+            DESKTOP_ENVIRONMENT=xmonad \
+            DESKTOP_ENVIRONMENT_CONFIG_NAME=config_base \
+            KERNEL_CONFIGURE=no \
+            EXPERT=yes \
+            KERNEL_BTF=no
+
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: armbian-${{ github.event.inputs.board }}
+          path: output/images/*.img.xz
+          retention-days: 7
