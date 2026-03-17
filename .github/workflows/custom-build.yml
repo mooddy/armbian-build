@@ -19,25 +19,30 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          df -h
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Fix COLUMNS environment variable
+      - name: Fix COLUMNS bug
         run: |
           unset COLUMNS || true
           echo "COLUMNS=160" >> $GITHUB_ENV
-
-      - name: Fix patching.py COLUMNS bug
-        run: |
           sed -i 's/int(os.environ.get("COLUMNS", 160))/int(os.environ.get("COLUMNS") or 160)/g' lib/tools/patching.py
 
       - name: Build Armbian
         env:
           COLUMNS: "160"
-          GITHUB_ACTIONS: ""
         run: |
           sudo --preserve-env=COLUMNS \
           ./compile.sh build \
@@ -53,12 +58,29 @@ jobs:
             EXPERT=yes \
             KERNEL_BTF=no
 
-      - name: Upload image
-        if: success()
+      - name: Find output images
+        if: always()
+        run: |
+          echo "=== Searching entire workspace for images ==="
+          find . -name "*.img.xz" 2>/dev/null || echo "No .img.xz found"
+          find . -name "*.img" 2>/dev/null || echo "No .img found"
+          echo "=== Directory structure ==="
+          ls -la || true
+          ls -la output/ 2>/dev/null || echo "No output dir"
+          ls -la output/images/ 2>/dev/null || echo "No output/images dir"
+          ls -la /runner/work/ 2>/dev/null || true
+          ls -la /home/runner/work/armbian-build/armbian-build/output/images/ 2>/dev/null || true
+
+      - name: Upload image as artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: armbian-${{ github.event.inputs.board }}-${{ github.event.inputs.release }}
-          path: output/images/*.img.xz
+          path: |
+            output/images/*.img.xz
+            output/images/*.img
+            /home/runner/work/armbian-build/armbian-build/output/images/*.img.xz
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Upload logs on failure
@@ -66,5 +88,23 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-logs
-          path: .tmp/logs-*
+          path: |
+            .tmp/logs-*
+            output/debug/
           retention-days: 3
+
+      - name: Print download instructions
+        if: success()
+        run: |
+          echo "=========================================="
+          echo "✅ BUILD COMPLETE!"
+          echo "=========================================="
+          echo "To download your image:"
+          echo "1. Go to Actions tab in your repo"
+          echo "2. Click this workflow run"
+          echo "3. Scroll down to Artifacts section"
+          echo "4. Click armbian-${{ github.event.inputs.board }}-${{ github.event.inputs.release }}"
+          echo "=========================================="
+          echo "Files built:"
+          find . -name "*.img.xz" 2>/dev/null
+          echo "=========================================="
