@@ -15,10 +15,7 @@ on:
         description: 'Release'
         required: true
         default: 'trixie'
-      - name: Fix COLUMNS env
-         run: |
-         unset COLUMNS
-          echo "COLUMNS=160" >> $GITHUB_ENV
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -28,11 +25,22 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fix COLUMNS environment variable
+        run: |
+          unset COLUMNS || true
+          echo "COLUMNS=160" >> $GITHUB_ENV
+
+      - name: Fix patching.py COLUMNS bug
+        run: |
+          sed -i 's/int(os.environ.get("COLUMNS", 160))/int(os.environ.get("COLUMNS") or 160)/g' lib/tools/patching.py
+
       - name: Build Armbian
         env:
           COLUMNS: "160"
+          GITHUB_ACTIONS: ""
         run: |
-          sudo ./compile.sh build \
+          sudo --preserve-env=COLUMNS \
+          ./compile.sh build \
             BOARD=${{ github.event.inputs.board }} \
             BRANCH=${{ github.event.inputs.branch }} \
             RELEASE=${{ github.event.inputs.release }} \
@@ -46,10 +54,17 @@ jobs:
             KERNEL_BTF=no
 
       - name: Upload image
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: armbian-${{ github.event.inputs.board }}
+          name: armbian-${{ github.event.inputs.board }}-${{ github.event.inputs.release }}
           path: output/images/*.img.xz
           retention-days: 7
-          - name: Fix COLUMNS env
-       
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: .tmp/logs-*
+          retention-days: 3
