@@ -26,6 +26,8 @@ jobs:
           fetch-depth: 0
 
       - name: Build Armbian
+        env:
+          COLUMNS: "160"
         run: |
           sudo ./compile.sh build \
             BOARD=${{ github.event.inputs.board }} \
