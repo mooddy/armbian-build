@@ -15,8 +15,9 @@ on:
         description: 'Release'
         required: true
         default: 'trixie'
- run: |
-          unset COLUMNS
+      - name: Fix COLUMNS env
+         run: |
+         unset COLUMNS
           echo "COLUMNS=160" >> $GITHUB_ENV
 jobs:
   build:
