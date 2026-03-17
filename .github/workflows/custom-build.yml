@@ -15,7 +15,9 @@ on:
         description: 'Release'
         required: true
         default: 'trixie'
-
+ run: |
+          unset COLUMNS
+          echo "COLUMNS=160" >> $GITHUB_ENV
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -48,3 +50,5 @@ jobs:
           name: armbian-${{ github.event.inputs.board }}
           path: output/images/*.img.xz
           retention-days: 7
+          - name: Fix COLUMNS env
+       
