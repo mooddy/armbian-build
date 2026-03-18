@@ -1,26 +1,24 @@
+---
 name: Custom Armbian Build
-
 on:
   workflow_dispatch:
     inputs:
       board:
-        description: 'Board name'
+        description: Board name
         required: true
-        default: 'x96q'
+        default: x96q
       branch:
-        description: 'Branch'
+        description: Branch
         required: true
-        default: 'current'
+        default: current
       release:
-        description: 'Release'
+        description: Release
         required: true
-        default: 'trixie'
-
+        default: trixie
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 180
-
     steps:
       - name: Free disk space
         run: |
@@ -32,18 +30,17 @@ jobs:
           sudo rm -rf /usr/share/swift
           sudo apt-get clean
           df -h
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
       - name: Fix COLUMNS bug
-        run: |
+        run: >
           unset COLUMNS || true
-          echo "COLUMNS=160" >> $GITHUB_ENV
-          sed -i 's/int(os.environ.get("COLUMNS", 160))/int(os.environ.get("COLUMNS") or 160)/g' lib/tools/patching.py
 
+          echo "COLUMNS=160" >> $GITHUB_ENV
+
+          sed -i 's/int(os.environ.get("COLUMNS", 160))/int(os.environ.get("COLUMNS") or 160)/g' lib/tools/patching.py
       - name: Cache Armbian sources and tools
         uses: actions/cache@v4
         with:
@@ -51,12 +48,16 @@ jobs:
             cache/sources
             cache/toolchains
             cache/rootfs
-          key: armbian-cache-${{ github.event.inputs.board }}-${{ github.event.inputs.branch }}-${{ github.event.inputs.release }}-${{ github.run_id }}
-          restore-keys: |
-            armbian-cache-${{ github.event.inputs.board }}-${{ github.event.inputs.branch }}-${{ github.event.inputs.release }}-
-            armbian-cache-${{ github.event.inputs.board }}-${{ github.event.inputs.branch }}-
-            armbian-cache-${{ github.event.inputs.board }}-
+          key: armbian-cache-${{ github.event.inputs.board }}-${{
+            github.event.inputs.branch }}-${{ github.event.inputs.release }}-${{
+            github.run_id }}
+          restore-keys: >
+            armbian-cache-${{ github.event.inputs.board }}-${{
+            github.event.inputs.branch }}-${{ github.event.inputs.release }}-
 
+            armbian-cache-${{ github.event.inputs.board }}-${{ github.event.inputs.branch }}-
+
+            armbian-cache-${{ github.event.inputs.board }}-
       - name: Build Armbian
         env:
           COLUMNS: "160"
@@ -75,60 +76,55 @@ jobs:
             EXPERT=yes \
             KERNEL_BTF=no \
             COMPRESS_OUTPUTIMAGE=xz
-
       - name: Verify image
         run: |
           echo "=== Output images ==="
           ls -lh output/images/ 2>/dev/null || echo "No output/images dir"
-          echo "=== Compressing any uncompressed images ==="
           cd output/images
           for f in *.img; do
             [ -f "$f" ] || continue
             echo "Compressing $f with $(nproc) threads..."
             xz -T$(nproc) -6 "$f"
-            echo "Done: ${f}.xz ($(du -h ${f}.xz | cut -f1))"
+            echo "Done: ${f}.xz"
           done
           echo "=== Final image files ==="
           ls -lh
-
       - name: Upload to transfer.sh for direct download
         if: success()
-        run: |
+        run: >
           cd output/images
-          FILE=$(ls *.img.xz | head -1)
-          echo "================================================"
-          echo "Uploading: $FILE"
-          echo "Size: $(du -h $FILE | cut -f1)"
-          echo "================================================"
 
-          # Try transfer.sh
-          echo "Trying transfer.sh..."
+          FILE=$(ls *.img.xz | head -1)
+
+          echo "Uploading: $FILE"
+
+          echo "Size: $(du -h $FILE | cut -f1)"
+
           URL=$(curl -s --retry 3 --upload-file "$FILE" "https://transfer.sh/$FILE")
 
-          # Verify URL was returned
           if echo "$URL" | grep -q "https://"; then
-            echo "✅ Upload successful!"
+            echo "Upload successful!"
             echo "DOWNLOAD_URL=$URL" >> $GITHUB_ENV
             echo "FILE_NAME=$FILE" >> $GITHUB_ENV
           else
-            echo "❌ transfer.sh failed, trying bashupload.com..."
+            echo "transfer.sh failed, trying bashupload.com..."
             URL=$(curl -s --retry 3 --upload-file "$FILE" "https://bashupload.com/$FILE")
             if echo "$URL" | grep -q "http"; then
-              echo "✅ bashupload.com upload successful!"
+              echo "bashupload.com upload successful!"
               echo "DOWNLOAD_URL=$URL" >> $GITHUB_ENV
               echo "FILE_NAME=$FILE" >> $GITHUB_ENV
             else
-              echo "❌ All uploads failed"
+              echo "All uploads failed"
               echo "DOWNLOAD_URL=FAILED" >> $GITHUB_ENV
               echo "FILE_NAME=$FILE" >> $GITHUB_ENV
             fi
           fi
-
       - name: Upload artifact as backup
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Armbian-${{ github.event.inputs.board }}-${{ github.event.inputs.release }}-${{ github.run_number }}
+          name: Armbian-${{ github.event.inputs.board }}-${{ github.event.inputs.release
+            }}-${{ github.run_number }}
           path: |
             output/images/*.img.xz
             output/images/*.sha
@@ -136,7 +132,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
-
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -146,68 +141,57 @@ jobs:
             .tmp/logs-*
             output/logs/
           retention-days: 3
-
       - name: Build summary
         if: success()
-        run: |
-          echo "## ✅ Armbian Build Complete!" >> $GITHUB_STEP_SUMMARY
+        run: >
+          echo "## Armbian Build Complete!" >> $GITHUB_STEP_SUMMARY
+
           echo "" >> $GITHUB_STEP_SUMMARY
+
           echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+
           echo "|-----------|-------|" >> $GITHUB_STEP_SUMMARY
+
           echo "| Board | ${{ github.event.inputs.board }} |" >> $GITHUB_STEP_SUMMARY
+
           echo "| Branch | ${{ github.event.inputs.branch }} |" >> $GITHUB_STEP_SUMMARY
+
           echo "| Release | ${{ github.event.inputs.release }} |" >> $GITHUB_STEP_SUMMARY
+
           echo "| Desktop | xmonad |" >> $GITHUB_STEP_SUMMARY
+
           echo "| Kernel | 6.12.77 |" >> $GITHUB_STEP_SUMMARY
+
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📦 Image Info" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Image Info" >> $GITHUB_STEP_SUMMARY
+
           ls -lh output/images/*.img.xz >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
           echo "" >> $GITHUB_STEP_SUMMARY
+
           if [ "$DOWNLOAD_URL" != "FAILED" ] && [ -n "$DOWNLOAD_URL" ]; then
-            echo "### 🔗 Direct Download Link" >> $GITHUB_STEP_SUMMARY
+            echo "### Direct Download Link" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**[${{ env.FILE_NAME }}](${{ env.DOWNLOAD_URL }})**" >> $GITHUB_STEP_SUMMARY
+            echo "Download URL: $DOWNLOAD_URL" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "> ⚠️ Link expires in **14 days** — download soon!" >> $GITHUB_STEP_SUMMARY
+            echo "Link expires in 14 days - download soon!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Or download via terminal:**" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-            echo "wget -O Armbian.img.xz \"${{ env.DOWNLOAD_URL }}\"" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "Download via terminal:" >> $GITHUB_STEP_SUMMARY
+            echo "wget -O Armbian.img.xz \"$DOWNLOAD_URL\"" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### ⬇️ Download via Artifact" >> $GITHUB_STEP_SUMMARY
-            echo "Direct link upload failed — use the artifact below instead" >> $GITHUB_STEP_SUMMARY
+            echo "### Download via Artifact" >> $GITHUB_STEP_SUMMARY
+            echo "Direct link upload failed - use the artifact below instead" >> $GITHUB_STEP_SUMMARY
           fi
+
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 💾 Flash Instructions" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "# Flash with balenaEtcher (Windows/Mac/Linux)" >> $GITHUB_STEP_SUMMARY
-          echo "# https://etcher.balena.io" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "# OR on Linux terminal:" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Flash Instructions" >> $GITHUB_STEP_SUMMARY
+
+          echo "Flash with balenaEtcher: https://etcher.balena.io" >> $GITHUB_STEP_SUMMARY
+
+          echo "Or on Linux terminal:" >> $GITHUB_STEP_SUMMARY
+
           echo "xz -d Armbian.img.xz" >> $GITHUB_STEP_SUMMARY
+
           echo "sudo dd if=Armbian.img of=/dev/sdX bs=4M status=progress" >> $GITHUB_STEP_SUMMARY
-          echo "sync" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-```
-
-## How it works
-
-| Step | What happens |
-|---|---|
-| **Build** | Builds image and compresses to `.img.xz` |
-| **Upload to transfer.sh** | Uploads image and gets direct URL |
-| **Fallback to bashupload.com** | If transfer.sh fails, tries backup host |
-| **Artifact backup** | Also uploads to GitHub as backup |
-| **Build summary** | Shows clickable download link in Summary tab |
-
-## After build completes — where to find your link
-
-1. Go to `https://github.com/mooddy/armbian-build/actions`
-2. Click the completed run ✅
-3. Click the **Summary** tab at the top left
-4. You'll see a clickable direct download link like:
-```
-https://transfer.sh/xxxxxx/Armbian-unofficial_xxxx_X96q.img.xz
